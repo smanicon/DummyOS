@@ -4,6 +4,6 @@ SECTIONS{
 	{
 		*(.text);
 		. = 0x1FE;
-		SHORT(0x55AA);
+		SHORT(0xAA55);
 	}
 }
