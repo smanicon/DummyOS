@@ -54,20 +54,26 @@ E2SBlock:
  * DS:SI	=> Pointer to memory where :
  *				-32bit : SEGMENT:OFFSET of the superblock
  *				-32bit : select the block to read
- * ES:DI 	=> Output block information
+ * ES:DI 	=> Output block information (wrote if AX=0x0000)
+ *
+ * AX		<= 0x0000 if OK
+ *		<= 0xFF00 if wrong magic code
+ *		<= 0xFF0F if bad block size (>4kb)
  *
  */
 E2Block:
 	pushw %bp		# Save the BP in the Stack
 	movw %sp, %bp		# And Set the BP to the current stack pointer
 
-	pushw $0x0000		# 8b : LBA	
-	pushw $0x0000
-	pushw $0x0000
-	pushw $0x0000
+	xorw %ax, %ax		# Clear %AX 
+
+	pushw %ax		# 8b : LBA	
+	pushw %ax
+	pushw %ax
+	pushw %ax
 	pushw %es		# 2b : segment	
 	pushw %di		# 2b : offset	
-	pushw $0x0000		# 2b : number of sector	
+	pushw %ax		# 2b : number of sector	
 	pushw $0x0010		# 2b : DAP size
 
 	subw $0x08, %sp		# Allow space for load DS:SI data	
@@ -88,23 +94,23 @@ E2Block:
 	movw -0x14(%bp), %si	# Set the Superblock Offset to SI
 
 //Test Magic Number	
-	pushw %si		# Save SI
-	addw $0x38, %si		# Go to the magic code
-	lodsw			# Set it to AX
-	pop %si			# Get back SI
-	cmpw %ax, 0xEF53	# Test magic number
-	jnz 9f			# End if wrong
+	movw 0x38(%si), %ax
+	cmpw $0xEF53, %ax	# Test magic number
+	jz 1f			# if wrong
+	movw $0xFF00, %ax	# Set Bad magic code return
+	jmp 9f			# Go to the end
+1:	
 
 //Load block size
-	pushw %si		# Save SI
-	addw $0x18, %si		# Go to log block size	
-	lodsw			# Set high log block size to ax
+	movw 0x18(%si), %ax	# Set high log block size to ax
 	test %ax, %ax 		# must be set to 0
-	jnz 9f			# else end call
+	jz 2f			# else
+1:	movw $0xFF0F, %ax	# Set bad block size code return
+	jmp 9f			# Go to the end
 	
-	lodsw			# Set low log block size to ax
+2:	movw 0x19(%si), %ax	# Set low log block size to ax
 	cmpw $0x04, %ax		# Must be less than 4
-	jle 9f			# Else end call
+	jge 1b			# Go to the bad block size return
 	
 	movw %ax, %cx		# Set it to CX
 	movb $0x02, %al		# Set AX to 2 (for 2 sectors)
@@ -120,9 +126,6 @@ E2Block:
 //TODO: END
 
 	xorw %ax, %ax		# Clear AX
-	jmp 9f			# Jump end call
-	
-	movw $0x0001, %ax
 9:	
 	pop %es			# Get back ES segment
 	pop %ds			# Get back DS segment
