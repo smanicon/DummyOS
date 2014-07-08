@@ -81,6 +81,7 @@ E2Block:
 	pushw %di		# Save DI registry
 	pushw %ds		# Save DS Segment
 	pushw %es		# Save ES Segment
+	pushw %cx		# Save CX registry
 	
 // Copy data DS:SI in the stack :
 	movw %ss, %ax		# Get the code segment
@@ -111,22 +112,37 @@ E2Block:
 2:	movw 0x19(%si), %ax	# Set low log block size to ax
 	cmpw $0x04, %ax		# Must be less than 4
 	jge 1b			# Go to the bad block size return
-	
-	movw %ax, %cx		# Set it to CX
-	movb $0x02, %al		# Set AX to 2 (for 2 sectors)
+
+//Set the DAP
+	movw %ax, %cx		# Set block size to CX
+	movw $0x0002, %ax	# Set AX = 2 (for 2 sectors)
 	shlw %cl, %ax		# AX = Log(AX, CX)
-	movw %ax, 0x0c(%bp)	# Save AX to DAP, count sector
-	
-//TODO: Block to sector
-	//jcxz
-	//clc
-	
-	
+	movw %ax, -0x0e(%bp)	# Save AX to DAP, count sector
 
-//TODO: END
+	movw %dx, %cx		# Save DX into CX
+	mulw -0x16(%bp)		# DX:AX = Block Size * Block to Read (octet 1)
+	addw $0x04, %ax		# AX += 4 (4 for MBR + Super Block)
+	adcw $0x00, %dx		# DX += Carry
+	movw %ax, -0x08(%bp)	# Save AX to DAP LBA (octet 1)
+	movw %dx, -0x06(%bp)	# Save DX to DAP LBA (octet 2)
 
-	xorw %ax, %ax		# Clear AX
-9:	
+	movw -0x0e(%bp), %ax	# Load AX = DAP Sector Count (= Block Size)
+	mulw -0x18(%bp)		# DX:AX = Block Size * Block to Read (octet 2)
+	addw -0x04(%bp), %ax	# AX += DAP LBA (octet 2)
+	adcw $0x00, %dx		# DX += Carry
+	movw %ax, -0x06(%bp)	# Save AX to DAP LBA (octet 2)
+	movw %dx, -0x04(%bp)	# Save DX to DAP LBA (octet 3)
+	movw %cx, %dx		# Restor DX from CX
+
+	
+	movw %ss, %ax
+	movw %ax, %ds
+	leaw -0x10(%bp), %si
+	movw $0x4200, %ax
+	
+	int $0x13
+9:
+	pop %cx			# Get back CX registry
 	pop %es			# Get back ES segment
 	pop %ds			# Get back DS segment
 	pop %di			# Get back DI registry
